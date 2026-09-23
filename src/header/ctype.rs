@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use btf_rs_parser::syn::ext::IdentExt;
 use btf_rs_parser::syn::{self, Expr, Lit, PathArguments, Type};
+use btf_rs_parser::types::primitive_c_type;
 
 pub(crate) enum CType {
     Base(String),
@@ -36,48 +37,6 @@ impl CType {
             }
         }
     }
-}
-
-fn rust_primitive(name: &str) -> Option<&'static str> {
-    Some(match name {
-        "u8" => "unsigned char",
-        "u16" => "unsigned short",
-        "u32" => "unsigned int",
-        "u64" => "unsigned long long",
-        "u128" => "unsigned __int128",
-        "usize" => "unsigned long",
-        "i8" => "signed char",
-        "i16" => "short",
-        "i32" => "int",
-        "i64" => "long long",
-        "i128" => "__int128",
-        "isize" => "long",
-        "bool" => "bool",
-        "f32" => "float",
-        "f64" => "double",
-        _ => return None,
-    })
-}
-
-/// `core::ffi` types, matched by name regardless of the path they're used through
-fn c_type(name: &str) -> Option<&'static str> {
-    Some(match name {
-        "c_char" => "char",
-        "c_schar" => "signed char",
-        "c_uchar" => "unsigned char",
-        "c_short" => "short",
-        "c_ushort" => "unsigned short",
-        "c_int" => "int",
-        "c_uint" => "unsigned int",
-        "c_long" => "long",
-        "c_ulong" => "unsigned long",
-        "c_longlong" => "long long",
-        "c_ulonglong" => "unsigned long long",
-        "c_float" => "float",
-        "c_double" => "double",
-        "c_void" => "void",
-        _ => return None,
-    })
 }
 
 /// Maps Rust field types to C, recording which `#[btf]` structs are needed
@@ -123,11 +82,8 @@ impl TypeMapper<'_> {
                     ));
                 }
                 let name = last.ident.unraw().to_string();
-                let single = p.path.leading_colon.is_none() && p.path.segments.len() == 1;
 
-                if single && let Some(c) = rust_primitive(&name) {
-                    Ok(CType::Base(c.to_owned()))
-                } else if let Some(c) = c_type(&name) {
+                if let Some(c) = primitive_c_type(&p.path) {
                     if complete && c == "void" {
                         return Err(syn::Error::new_spanned(
                             ty,

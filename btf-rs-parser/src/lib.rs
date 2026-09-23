@@ -3,6 +3,8 @@ pub use zyn::{Diagnostic, syn};
 use zyn::TokenStream;
 use zyn::syn::ext::IdentExt;
 use zyn::syn::spanned::Spanned;
+pub mod types;
+
 use zyn::syn::{Attribute, Field, Fields, Ident, ItemStruct, Meta, Type, Visibility};
 
 // No `#[zyn("btf")]`: the derived `FromInput` rejects a bare `#[btf]`,

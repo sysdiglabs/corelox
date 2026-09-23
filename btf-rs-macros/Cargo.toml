@@ -7,3 +7,5 @@ edition = "2024"
 proc-macro = true
 
 [dependencies]
+btf-rs-parser = { path = "../btf-rs-parser" }
+zyn = "0.5.4"
