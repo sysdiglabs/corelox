@@ -259,7 +259,7 @@ struct Types {
                 "b.rs",
                 r#"
                 mod inline {
-                    #[btf(direct_access)]
+                    #[btf]
                     pub struct Inner {
                         #[btf(path = "x.y")]
                         x: u32,

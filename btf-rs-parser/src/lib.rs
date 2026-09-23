@@ -5,11 +5,9 @@ use zyn::syn::{Attribute, Field, Fields, Ident, ItemStruct, Meta, Type, Visibili
 
 // No `#[zyn("btf")]`: the derived `FromInput` rejects a bare `#[btf]`,
 // so we only derive `from_args` and build the attributes by hand below.
+/// Struct-level `#[btf]` settings (none so far)
 #[derive(zyn::Attribute)]
-pub struct BtfStruct {
-    #[zyn(default)]
-    pub direct_access: bool,
-}
+pub struct BtfStruct {}
 
 #[derive(zyn::Attribute)]
 pub struct BtfField {
@@ -163,14 +161,7 @@ mod tests {
 
     #[test]
     fn struct_bare() {
-        let attr = BtfStruct::from_input(&input("#[btf] struct Foo;")).unwrap();
-        assert!(!attr.direct_access);
-    }
-
-    #[test]
-    fn struct_direct_access() {
-        let attr = BtfStruct::from_input(&input("#[btf(direct_access)] struct Foo;")).unwrap();
-        assert!(attr.direct_access);
+        assert!(BtfStruct::from_input(&input("#[btf] struct Foo;")).is_ok());
     }
 
     #[test]
@@ -181,11 +172,7 @@ mod tests {
 
     #[test]
     fn empty_parens() {
-        assert!(
-            !BtfStruct::from_input(&input("#[btf()] struct Foo;"))
-                .unwrap()
-                .direct_access
-        );
+        assert!(BtfStruct::from_input(&input("#[btf()] struct Foo;")).is_ok());
         assert!(
             BtfField::from_field(&field("#[btf()] x: u32"))
                 .unwrap()
@@ -196,11 +183,7 @@ mod tests {
 
     #[test]
     fn no_attr() {
-        assert!(
-            !BtfStruct::from_input(&input("struct Foo;"))
-                .unwrap()
-                .direct_access
-        );
+        assert!(BtfStruct::from_input(&input("struct Foo;")).is_ok());
         assert!(
             BtfField::from_field(&field("x: u32"))
                 .unwrap()
@@ -217,7 +200,7 @@ mod tests {
     #[test]
     fn unknown_arg_is_err() {
         assert!(BtfStruct::from_input(&input("#[btf(path = \"a\")] struct Foo;")).is_err());
-        assert!(BtfField::from_field(&field("#[btf(direct_access)] x: u32")).is_err());
+        assert!(BtfField::from_field(&field("#[btf(bogus)] x: u32")).is_err());
     }
 
     #[test]
@@ -239,16 +222,7 @@ mod tests {
 
     #[test]
     fn struct_from_tokens() {
-        assert!(
-            !BtfStruct::from_tokens(TokenStream::new())
-                .unwrap()
-                .direct_access
-        );
-        assert!(
-            BtfStruct::from_tokens("direct_access".parse().unwrap())
-                .unwrap()
-                .direct_access
-        );
+        assert!(BtfStruct::from_tokens(TokenStream::new()).is_ok());
         assert!(BtfStruct::from_tokens("bogus".parse().unwrap()).is_err());
     }
 
@@ -270,7 +244,6 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        assert!(!item.attr.direct_access);
         assert_eq!(attr_names(&item.attrs), ["doc", "repr"]);
         assert!(matches!(item.vis, Visibility::Public(_)));
         assert_eq!(item.ident, "Foo");
@@ -289,11 +262,8 @@ mod tests {
     }
 
     #[test]
-    fn item_from_item_struct_attr() {
-        let item = BtfItem::from_item(&item("#[btf(direct_access)] struct Foo {}"))
-            .unwrap()
-            .unwrap();
-        assert!(item.attr.direct_access);
+    fn item_bad_struct_attr_is_err() {
+        assert!(BtfItem::from_item(&item("#[btf(bogus)] struct Foo {}")).is_err());
     }
 
     #[test]
@@ -312,15 +282,10 @@ mod tests {
     }
 
     #[test]
-    fn item_new_uses_given_attr() {
-        let item = BtfItem::new(
-            BtfStruct {
-                direct_access: true,
-            },
-            &item("struct Foo {}"),
-        )
-        .unwrap();
-        assert!(item.attr.direct_access);
+    fn item_new() {
+        let item = BtfItem::new(BtfStruct {}, &item("struct Foo { x: u32 }")).unwrap();
+        assert_eq!(item.ident, "Foo");
+        assert_eq!(item.fields.len(), 1);
     }
 
     #[test]
@@ -343,7 +308,7 @@ mod tests {
 
     #[test]
     fn item_bad_field_attr_is_err() {
-        let src = "#[btf] struct Foo { #[btf(direct_access)] x: u32 }";
+        let src = "#[btf] struct Foo { #[btf(bogus)] x: u32 }";
         assert!(BtfItem::from_item(&item(src)).is_err());
     }
 
