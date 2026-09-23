@@ -1,11 +1,11 @@
 [package]
-name = "btf-rs"
+name = "corelox"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 askama = "0.16.1"
 bindgen = { version = "0.73.2", features = ["experimental"] }
-btf-rs-parser = { path = "btf-rs-parser" }
+corelox-parser = { path = "corelox-parser" }
 glob = "0.3"
 proc-macro2 = { version = "1", features = ["span-locations"] }

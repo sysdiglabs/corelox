@@ -2,12 +2,12 @@
 
 use std::collections::HashMap;
 
-use btf_rs_parser::syn::ext::IdentExt;
-use btf_rs_parser::syn::{self, Expr, Lit, PathArguments, Type};
-use btf_rs_parser::types::primitive_c_type;
+use corelox_parser::syn::ext::IdentExt;
+use corelox_parser::syn::{self, Expr, Lit, PathArguments, Type};
+use corelox_parser::types::{Signedness, primitive};
 
 pub(crate) enum CType {
-    Base(String),
+    Base(String, Signedness),
     Pointer(Box<CType>),
     Array(Box<CType>, u64),
 }
@@ -22,9 +22,23 @@ impl CType {
         matches!(self, CType::Pointer(_))
     }
 
+    /// Returns which integer's signedness to check, relative to a member of
+    /// this type (e.g. `[0]` for the elements of an array), and whether it
+    /// should be signed. `None` if there's nothing to check.
+    pub fn signedness_check(&self) -> Option<(String, bool)> {
+        match self {
+            CType::Base(_, Signedness::Signed) => Some((String::new(), true)),
+            CType::Base(_, Signedness::Unsigned) => Some((String::new(), false)),
+            CType::Base(_, Signedness::Unchecked) | CType::Pointer(_) => None,
+            CType::Array(inner, _) => inner
+                .signedness_check()
+                .map(|(index, signed)| (format!("[0]{index}"), signed)),
+        }
+    }
+
     fn declare(&self, name: String) -> String {
         match self {
-            CType::Base(base) => format!("{base} {name}"),
+            CType::Base(base, _) => format!("{base} {name}"),
             CType::Pointer(inner) => inner.declare(format!("*{name}")),
             CType::Array(inner, len) => {
                 // `*p[N]` is an array of pointers, a pointer to an array needs `(*p)[N]`
@@ -83,19 +97,22 @@ impl TypeMapper<'_> {
                 }
                 let name = last.ident.unraw().to_string();
 
-                if let Some(c) = primitive_c_type(&p.path) {
-                    if complete && c == "void" {
+                if let Some(primitive) = primitive(&p.path) {
+                    if complete && primitive.c_type == "void" {
                         return Err(syn::Error::new_spanned(
                             ty,
                             "`c_void` is only supported behind a pointer",
                         ));
                     }
-                    Ok(CType::Base(c.to_owned()))
+                    Ok(CType::Base(
+                        primitive.c_type.to_owned(),
+                        primitive.signedness,
+                    ))
                 } else if let Some(&idx) = self.known.get(&name) {
                     if complete {
                         self.deps.push(idx);
                     }
-                    Ok(CType::Base(format!("struct {name}")))
+                    Ok(CType::Base(format!("struct {name}"), Signedness::Unchecked))
                 } else {
                     Err(syn::Error::new_spanned(
                         ty,

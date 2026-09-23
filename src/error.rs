@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use btf_rs_parser::{Diagnostic, syn};
+use corelox_parser::{Diagnostic, syn};
 use proc_macro2::Span;
 
 // `Debug` is implemented via `Display`, because that's what build scripts

@@ -16,7 +16,7 @@ fn glob_and_files() {
     fs::write(dir.join("src/sub/not_rust.txt"), "struct {").unwrap();
     let out = dir.join("btf.h");
 
-    btf_rs::Builder::new()
+    corelox::Builder::new()
         .file(dir.join("src/sub/b.rs"))
         // matches b.rs again, which must not produce a duplicate
         .glob(format!("{}/src/**/*.rs", dir.display()))
@@ -46,20 +46,20 @@ struct B {
 #[test]
 fn missing_file() {
     let dir = tmp_dir("missing_file");
-    let err = btf_rs::Builder::new()
+    let err = corelox::Builder::new()
         .files([dir.join("nope.rs")])
         .generate_header()
         .unwrap_err();
-    assert!(matches!(err, btf_rs::Error::Io { .. }), "{err:?}");
+    assert!(matches!(err, corelox::Error::Io { .. }), "{err:?}");
 }
 
 #[test]
 fn invalid_glob() {
-    let err = btf_rs::Builder::new()
+    let err = corelox::Builder::new()
         .glob("[")
         .generate_header()
         .unwrap_err();
-    assert!(matches!(err, btf_rs::Error::Glob { .. }), "{err:?}");
+    assert!(matches!(err, corelox::Error::Glob { .. }), "{err:?}");
 }
 
 #[test]
@@ -71,8 +71,8 @@ fn bindgen() {
     )
     .unwrap();
 
-    let paths = btf_rs::Bindgen::new(
-        btf_rs::Builder::new().file(dir.join("src/a.rs")),
+    let paths = corelox::Bindgen::new(
+        corelox::Builder::new().file(dir.join("src/a.rs")),
         dir.join("out"),
     )
     .generate()

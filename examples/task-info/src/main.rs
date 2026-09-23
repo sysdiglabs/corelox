@@ -9,7 +9,7 @@ use core::ffi::c_char;
 use aya_ebpf::helpers::{bpf_get_current_task, bpf_printk};
 use aya_ebpf::macros::kprobe;
 use aya_ebpf::programs::ProbeContext;
-use btf_rs_macros::btf;
+use corelox_macros::btf;
 
 /// Only the fields we need, named as in the kernel's `struct task_struct`.
 /// Their offsets get fixed up for the running kernel when the program loads.

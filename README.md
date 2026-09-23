@@ -1,4 +1,4 @@
-# btf-rs
+# corelox
 
 CO-RE (Compile Once – Run Everywhere) access to kernel structs from Rust BPF
 programs.
@@ -9,7 +9,7 @@ fixes up for the running kernel's layout when the program loads, so the
 program works across kernel versions without recompiling.
 
 ```rust
-use btf_rs_macros::btf;
+use corelox_macros::btf;
 
 #[btf]
 pub struct task_struct {
@@ -34,7 +34,7 @@ if task_struct::has_vruntime() {
 Rust has no equivalent of clang's `__builtin_preserve_access_index`, so the
 field accesses are done in C:
 
-1. `btf_rs::Bindgen`, called from build.rs, scans the program's sources for
+1. `corelox::Bindgen`, called from build.rs, scans the program's sources for
    `#[btf]` structs and generates a C header with matching struct definitions
    and a `static inline` accessor for each field
 2. bindgen generates Rust bindings for the accessors, along with non-inline C
@@ -50,10 +50,10 @@ field accesses are done in C:
 ```rust
 use std::path::PathBuf;
 
-fn main() -> Result<(), btf_rs::Error> {
+fn main() -> Result<(), corelox::Error> {
     let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
-    let header = btf_rs::Builder::new().glob("src/**/*.rs");
-    btf_rs::Bindgen::new(header, out_dir.join("btf-rs")).generate()?;
+    let header = corelox::Builder::new().glob("src/**/*.rs");
+    corelox::Bindgen::new(header, out_dir.join("corelox")).generate()?;
     Ok(())
 }
 ```
@@ -62,10 +62,10 @@ fn main() -> Result<(), btf_rs::Error> {
 
 ```toml
 [dependencies]
-btf-rs-macros = { path = "..." }
+corelox-macros = { path = "..." }
 
 [build-dependencies]
-btf-rs = { path = "..." }
+corelox = { path = "..." }
 ```
 
 The build script has to belong to the BPF program's binary crate, which is
@@ -124,10 +124,10 @@ Structs must have named fields and can't be generic.
 
 ## Crates
 
-- `btf-rs`: the build-time part: header generation (`Builder`) and
+- `corelox`: the build-time part: header generation (`Builder`) and
   bindings, wrappers and linking (`Bindgen`)
-- `btf-rs-macros`: the `#[btf]` attribute macro
-- `btf-rs-parser`: parsing of `#[btf]` structs, shared by the two
+- `corelox-macros`: the `#[btf]` attribute macro
+- `corelox-parser`: parsing of `#[btf]` structs, shared by the two
 
 ## Limitations
 

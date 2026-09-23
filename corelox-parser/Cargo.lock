@@ -3,15 +3,7 @@
 version = 4
 
 [[package]]
-name = "btf-rs-macros"
-version = "0.1.0"
-dependencies = [
- "btf-rs-parser",
- "zyn",
-]
-
-[[package]]
-name = "btf-rs-parser"
+name = "corelox-parser"
 version = "0.1.0"
 dependencies = [
  "zyn",

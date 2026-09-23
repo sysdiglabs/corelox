@@ -6,7 +6,7 @@ accessors, so it works across kernel versions without recompiling.
 
 - `src/main.rs` declares the fields it needs of `struct task_struct` with
   `#[btf]`, and reads them with the generated accessors
-- `build.rs` generates the C header and wrappers for them with `btf_rs::Bindgen`,
+- `build.rs` generates the C header and wrappers for them with `corelox::Bindgen`,
   and has them linked into the program
 
 ## Requirements

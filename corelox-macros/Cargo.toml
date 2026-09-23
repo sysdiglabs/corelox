@@ -1,5 +1,5 @@
 [package]
-name = "btf-rs-macros"
+name = "corelox-macros"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,5 +7,5 @@ edition = "2024"
 proc-macro = true
 
 [dependencies]
-btf-rs-parser = { path = "../btf-rs-parser" }
+corelox-parser = { path = "../corelox-parser" }
 zyn = "0.5.4"

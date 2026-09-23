@@ -7,8 +7,9 @@ use std::collections::hash_map::Entry;
 use std::path::PathBuf;
 
 use askama::Template;
-use btf_rs_parser::BtfItem;
-use btf_rs_parser::syn::ext::IdentExt;
+use corelox_parser::BtfItem;
+use corelox_parser::syn::ext::IdentExt;
+use corelox_parser::types::Signedness;
 
 use crate::error::{self, Error, location};
 use ctype::{CType, TypeMapper};
@@ -50,6 +51,14 @@ struct Accessor {
     /// The C member, e.g. `se.vruntime`
     member: String,
     is_pointer: bool,
+    signedness_check: Option<SignednessCheck>,
+}
+
+/// Checks that an integer has the same signedness in the kernel as in Rust
+struct SignednessCheck {
+    /// The integer, e.g. `se.vruntime` or `comm[0]`
+    member: String,
+    signed: bool,
 }
 
 /// A struct member while grouping `#[btf(path)]` fields into nested structs
@@ -152,6 +161,12 @@ fn members(
             name: field.ident.unraw().to_string(),
             member: member.clone(),
             is_pointer: ty.is_pointer(),
+            signedness_check: ty
+                .signedness_check()
+                .map(|(index, signed)| SignednessCheck {
+                    member: format!("{member}{index}"),
+                    signed,
+                }),
         });
         let field_member = Member::Field {
             ty,
@@ -211,7 +226,7 @@ fn flatten(
                 deps.push(nested_base + nested.len());
                 fields.push(CField {
                     name: member,
-                    ty: CType::Base(format!("struct {nested_name}")),
+                    ty: CType::Base(format!("struct {nested_name}"), Signedness::Unchecked),
                 });
                 nested.push(CStruct {
                     name: nested_name,

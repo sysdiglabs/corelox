@@ -178,32 +178,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
-name = "btf-rs"
-version = "0.1.0"
-dependencies = [
- "askama",
- "bindgen",
- "btf-rs-parser",
- "glob",
- "proc-macro2",
-]
-
-[[package]]
-name = "btf-rs-macros"
-version = "0.1.0"
-dependencies = [
- "btf-rs-parser",
- "zyn",
-]
-
-[[package]]
-name = "btf-rs-parser"
-version = "0.1.0"
-dependencies = [
- "zyn",
-]
-
-[[package]]
 name = "camino"
 version = "1.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -260,6 +234,32 @@ dependencies = [
  "glob",
  "libc",
  "libloading",
+]
+
+[[package]]
+name = "corelox"
+version = "0.1.0"
+dependencies = [
+ "askama",
+ "bindgen",
+ "corelox-parser",
+ "glob",
+ "proc-macro2",
+]
+
+[[package]]
+name = "corelox-macros"
+version = "0.1.0"
+dependencies = [
+ "corelox-parser",
+ "zyn",
+]
+
+[[package]]
+name = "corelox-parser"
+version = "0.1.0"
+dependencies = [
+ "zyn",
 ]
 
 [[package]]
@@ -500,8 +500,8 @@ name = "task-info"
 version = "0.1.0"
 dependencies = [
  "aya-ebpf",
- "btf-rs",
- "btf-rs-macros",
+ "corelox",
+ "corelox-macros",
 ]
 
 [[package]]
