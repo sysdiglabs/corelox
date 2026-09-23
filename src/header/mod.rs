@@ -1,5 +1,6 @@
 //! C header generation. The layout lives in `templates/header.h`.
 
+mod check;
 mod ctype;
 
 use std::collections::HashMap;
@@ -9,7 +10,6 @@ use std::path::PathBuf;
 use askama::Template;
 use corelox_parser::BtfItem;
 use corelox_parser::syn::ext::IdentExt;
-use corelox_parser::types::Signedness;
 
 use crate::error::{self, Error, location};
 use ctype::{CType, TypeMapper};
@@ -50,7 +50,7 @@ struct Accessor {
     name: String,
     /// The C member, e.g. `se.vruntime`
     member: String,
-    is_pointer: bool,
+    ty: CType,
     signedness_check: Option<SignednessCheck>,
 }
 
@@ -67,7 +67,12 @@ enum Member {
     Nested(Vec<(String, Member)>),
 }
 
-pub(crate) fn generate(structs: &[SourceStruct]) -> Result<String, Error> {
+/// Generates the header, checking field types against `btf` if given.
+/// Returns the header and any warnings.
+pub(crate) fn generate(
+    structs: &[SourceStruct],
+    btf: Option<&btf_rs::Btf>,
+) -> Result<(String, Vec<String>), Error> {
     let mut errors = Vec::new();
     let known = index_by_name(structs, &mut errors);
 
@@ -91,6 +96,18 @@ pub(crate) fn generate(structs: &[SourceStruct]) -> Result<String, Error> {
         return Err(Error::Source(errors));
     }
 
+    let mut warnings = Vec::new();
+    if let Some(btf) = btf {
+        // the first cstructs are the #[btf] structs, in the same order
+        for (s, c) in structs.iter().zip(&cstructs) {
+            check::check_struct(btf, s, &c.accessors, &mut errors, &mut warnings)
+                .map_err(Error::Btf)?;
+        }
+        if !errors.is_empty() {
+            return Err(Error::Source(errors));
+        }
+    }
+
     let definitions = definition_order(&cstructs)
         .map_err(|idx| {
             let s = &structs[cstructs[idx].origin];
@@ -109,7 +126,7 @@ pub(crate) fn generate(structs: &[SourceStruct]) -> Result<String, Error> {
         definitions,
     };
     // rendering only fails if a `Display` impl does, and ours don't
-    Ok(header.render().expect("failed to render header"))
+    Ok((header.render().expect("failed to render header"), warnings))
 }
 
 /// Returns struct indices by name, reporting duplicates.
@@ -160,7 +177,7 @@ fn members(
         accessors.push(Accessor {
             name: field.ident.unraw().to_string(),
             member: member.clone(),
-            is_pointer: ty.is_pointer(),
+            ty: ty.clone(),
             signedness_check: ty
                 .signedness_check()
                 .map(|(index, signed)| SignednessCheck {
@@ -226,7 +243,7 @@ fn flatten(
                 deps.push(nested_base + nested.len());
                 fields.push(CField {
                     name: member,
-                    ty: CType::Base(format!("struct {nested_name}"), Signedness::Unchecked),
+                    ty: CType::Struct(nested_name.clone()),
                 });
                 nested.push(CStruct {
                     name: nested_name,

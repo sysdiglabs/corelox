@@ -30,7 +30,7 @@ struct {{ s.name }} {
 {% for s in structs -%}
 {% for a in s.accessors -%}
 {% let accessor = "co_re_{}_{}"|format(s.name, a.name) -%}
-{% if a.is_pointer %}
+{% if a.ty.is_pointer() %}
 {# pointers are only passed around, so the pointee type is erased -#}
 typedef const void *{{ accessor }}_t;
 {%- else %}

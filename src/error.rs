@@ -19,6 +19,8 @@ pub enum Error {
     /// Errors in the input sources, each formatted as `file:line:col: error: message`
     Source(Vec<String>),
     Bindgen(bindgen::BindgenError),
+    /// The BTF to check the field types against couldn't be read
+    Btf(btf_rs::Error),
     /// clang's LLVM is newer than the Rust toolchain's, which bpf-linker uses
     LlvmVersion {
         clang: u32,
@@ -41,6 +43,7 @@ impl fmt::Display for Error {
             Error::Io { path, source } => write!(f, "{}: {source}", path.display()),
             Error::Source(messages) => f.write_str(&messages.join("\n")),
             Error::Bindgen(e) => write!(f, "bindgen: {e}"),
+            Error::Btf(e) => write!(f, "reading BTF: {e}"),
             Error::LlvmVersion { clang, rust } => write!(
                 f,
                 "clang uses LLVM {clang}, but the Rust toolchain uses LLVM {rust}: \
@@ -68,6 +71,7 @@ impl std::error::Error for Error {
         match self {
             Error::Io { source, .. } => Some(source),
             Error::Bindgen(e) => Some(e),
+            Error::Btf(e) => Some(e),
             _ => None,
         }
     }

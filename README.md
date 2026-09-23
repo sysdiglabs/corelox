@@ -112,6 +112,35 @@ just renames the member.
 
 Structs must have named fields and can't be generic.
 
+### Type checks
+
+The Rust field types have to match the kernel's: a `u64` read from a 4-byte
+`int` would pick up the neighbouring bytes, and libbpf doesn't check sizes
+or signedness when it relocates reads. So the types get checked twice:
+
+- **when the program is loaded**, on the kernel it's loaded on: each accessor
+  compares the Rust type's size (and signedness, for integers) with the
+  kernel's, using CO-RE relocations. On a mismatch, it calls a nonexistent
+  helper, so the verifier rejects the program with
+  `invalid func unknown#195900001` (size) or `#195900002` (signedness),
+  next to a source line naming the field
+- **when building**, against the BTF of one kernel: the running one's
+  (`/sys/kernel/btf/vmlinux`) by default, or a file set with
+  `Bindgen::type_check`. Mismatches fail the build with their source
+  locations, e.g.
+
+  ```
+  src/main.rs:18:9: error: `task_struct::pid`: the kernel's `pid` is `pid_t` (4 bytes, signed), but the Rust type is 8 bytes
+  ```
+
+  Missing structs and fields are only warnings, since other kernels may have
+  them (use `has_foo()` to check at runtime).
+
+Signedness isn't checked for single bytes: the kernel's `char` looks like
+either `unsigned char` or `signed char` in BTF, depending on the kernel, so
+e.g. `comm: [u8; 16]` wouldn't work everywhere otherwise. Bitfields aren't
+supported.
+
 ## Requirements
 
 - nightly Rust with `rust-src`, for `build-std` on the BPF target

@@ -14,7 +14,7 @@ use corelox_parser::BtfItem;
 use corelox_parser::syn;
 
 pub use bindgen;
-pub use bindings::{Bindgen, OutputPaths, Prepared};
+pub use bindings::{Bindgen, OutputPaths, Prepared, TypeCheck};
 pub use error::Error;
 
 use header::SourceStruct;
@@ -120,6 +120,15 @@ impl Builder {
 }
 
 fn generate_header(sources: Vec<(PathBuf, String)>) -> Result<String, Error> {
+    generate_checked_header(sources, None).map(|(header, _)| header)
+}
+
+/// Generates the header, checking the field types against `btf` if given.
+/// Returns the header and any warnings.
+fn generate_checked_header(
+    sources: Vec<(PathBuf, String)>,
+    btf: Option<&btf_rs::Btf>,
+) -> Result<(String, Vec<String>), Error> {
     let mut structs = Vec::new();
     let mut errors = Vec::new();
     for (path, text) in sources {
@@ -131,7 +140,7 @@ fn generate_header(sources: Vec<(PathBuf, String)>) -> Result<String, Error> {
     if !errors.is_empty() {
         return Err(Error::Source(errors));
     }
-    header::generate(&structs)
+    header::generate(&structs, btf)
 }
 
 fn collect_structs(
@@ -452,6 +461,115 @@ struct task_struct {
                 "c, BPF_FIELD_BYTE_SIZE) != sizeof(*out)) corelox_size_mismatch(); /* s::c */",
                 "d, BPF_FIELD_BYTE_SIZE) != sizeof(*out)) corelox_size_mismatch(); /* s::d */",
                 "d, BPF_FIELD_SIGNED) != true) corelox_signedness_mismatch(); /* s::d */",
+            ]
+        );
+    }
+
+    /// Checks `src` against the BTF of `tests/data/kernel.c`, returning the
+    /// errors and warnings.
+    fn check(src: &str) -> (Vec<String>, Vec<String>) {
+        let btf = btf_rs::Btf::from_bytes(include_bytes!("../tests/data/kernel.btf")).unwrap();
+        let sources = vec![(PathBuf::from("a.rs"), src.to_owned())];
+        match generate_checked_header(sources, Some(&btf)) {
+            Ok((_, warnings)) => (Vec::new(), warnings),
+            Err(Error::Source(errors)) => (errors, Vec::new()),
+            Err(e) => panic!("{e}"),
+        }
+    }
+
+    #[test]
+    fn type_check_ok() {
+        let (errors, warnings) = check(
+            r#"
+            #[btf]
+            struct task_struct {
+                pid: i32,
+                flags: u32,
+                real_parent: *const task_struct,
+                mm: *const mm_struct,
+                comm: [c_char; 16],
+                #[btf(path = "se.vruntime")]
+                vruntime: u64,
+                #[btf(path = "se.avg.load_avg")]
+                load: core::ffi::c_ulong,
+                // in anonymous members
+                anon_int: c_int,
+                anon_nested: i64,
+                state: i32,
+                qualified: i64,
+                opaque: *const c_void,
+                shorts: [u16; 4],
+                ratio: f64,
+            }
+
+            #[btf]
+            struct mm_struct {
+                total_vm: u64,
+            }
+            "#,
+        );
+        assert_eq!(errors, [""; 0]);
+        assert_eq!(warnings, [""; 0]);
+
+        // signedness isn't checked for single bytes, see `checks_signedness`
+        for comm in ["[u8; 16]", "[i8; 16]"] {
+            let (errors, _) = check(&format!("#[btf] struct task_struct {{ comm: {comm} }}"));
+            assert_eq!(errors, [""; 0], "{comm}");
+        }
+    }
+
+    #[test]
+    fn type_check_mismatches() {
+        let (errors, _) = check(
+            r#"#[btf] struct task_struct {
+    pid: u64,
+    flags: i32,
+    mm: u64,
+    real_parent: *const mm_struct,
+    comm: [c_char; 8],
+    shorts: [i16; 4],
+    bits: u32,
+    state: u32,
+    ratio: f32,
+}
+#[btf] struct mm_struct {}"#,
+        );
+        assert_eq!(
+            errors,
+            [
+                "a.rs:2:5: error: `task_struct::pid`: the kernel's `pid` is `pid_t` (4 bytes, signed), but the Rust type is 8 bytes",
+                "a.rs:3:5: error: `task_struct::flags`: the kernel's `flags` is `unsigned int` (4 bytes, unsigned), but the Rust type is signed",
+                "a.rs:4:5: error: `task_struct::mm`: the kernel's `mm` is a pointer to `struct mm_struct`, but the Rust type is an integer",
+                "a.rs:5:5: error: `task_struct::real_parent`: the kernel's `real_parent` is a pointer to `struct task_struct`, but the Rust type is a pointer to `struct mm_struct`",
+                "a.rs:6:5: error: `task_struct::comm`: the kernel's `comm` is an array of 16, but the Rust type is an array of 8",
+                "a.rs:7:5: error: `task_struct::shorts`: the elements of the kernel's `shorts` are `unsigned short` (2 bytes, unsigned), but the Rust ones are signed",
+                "a.rs:8:5: error: `task_struct::bits`: the kernel's `bits` is a bitfield, which isn't supported",
+                "a.rs:9:5: error: `task_struct::state`: the kernel's `state` is `enum state` (4 bytes, signed), but the Rust type is unsigned",
+                "a.rs:10:5: error: `task_struct::ratio`: the kernel's `ratio` is `double` (8 bytes), but the Rust type is 4 bytes",
+            ]
+        );
+
+        let (errors, _) =
+            check("#[btf] struct task_struct {\n    #[btf(path = \"pid.x\")]\n    x: u32,\n}");
+        assert_eq!(
+            errors,
+            [
+                "a.rs:3:5: error: `task_struct::x`: the kernel's `pid` is `pid_t` (4 bytes, signed), not a struct or union"
+            ]
+        );
+    }
+
+    #[test]
+    fn type_check_missing() {
+        let (errors, warnings) = check(
+            "#[btf] struct task_struct {\n    pid: i32,\n    #[btf(path = \"se.nope\")]\n    nope: u32,\n}\n#[btf] struct nope { x: u32 }",
+        );
+        assert_eq!(errors, [""; 0]);
+        assert_eq!(
+            warnings,
+            [
+                "a.rs:4:5: `task_struct::nope`: the kernel's `struct task_struct` has no member `se.nope`",
+                "a.rs:6:15: the kernel has no `struct nope`, so its fields can't be checked",
             ]
         );
     }

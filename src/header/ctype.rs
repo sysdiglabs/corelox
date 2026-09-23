@@ -4,10 +4,13 @@ use std::collections::HashMap;
 
 use corelox_parser::syn::ext::IdentExt;
 use corelox_parser::syn::{self, Expr, Lit, PathArguments, Type};
-use corelox_parser::types::{Signedness, primitive};
+use corelox_parser::types::{Primitive, PrimitiveKind, Signedness, primitive};
 
+#[derive(Clone)]
 pub(crate) enum CType {
-    Base(String, Signedness),
+    Primitive(Primitive),
+    /// A struct, by name
+    Struct(String),
     Pointer(Box<CType>),
     Array(Box<CType>, u64),
 }
@@ -27,9 +30,10 @@ impl CType {
     /// should be signed. `None` if there's nothing to check.
     pub fn signedness_check(&self) -> Option<(String, bool)> {
         match self {
-            CType::Base(_, Signedness::Signed) => Some((String::new(), true)),
-            CType::Base(_, Signedness::Unsigned) => Some((String::new(), false)),
-            CType::Base(_, Signedness::Unchecked) | CType::Pointer(_) => None,
+            CType::Primitive(p) if checks_signedness(p) => {
+                Some((String::new(), p.signedness == Signedness::Signed))
+            }
+            CType::Primitive(_) | CType::Struct(_) | CType::Pointer(_) => None,
             CType::Array(inner, _) => inner
                 .signedness_check()
                 .map(|(index, signed)| (format!("[0]{index}"), signed)),
@@ -38,7 +42,8 @@ impl CType {
 
     fn declare(&self, name: String) -> String {
         match self {
-            CType::Base(base, _) => format!("{base} {name}"),
+            CType::Primitive(p) => format!("{} {name}", p.c_type),
+            CType::Struct(s) => format!("struct {s} {name}"),
             CType::Pointer(inner) => inner.declare(format!("*{name}")),
             CType::Array(inner, len) => {
                 // `*p[N]` is an array of pointers, a pointer to an array needs `(*p)[N]`
@@ -51,6 +56,16 @@ impl CType {
             }
         }
     }
+}
+
+/// Whether to check the signedness of an integer.
+///
+/// Not for single bytes: the kernel's `char` looks just like an `unsigned char`
+/// or a `signed char` in BTF, depending on the kernel (it's built with
+/// `-funsigned-char` since 6.2), so e.g. `comm: [u8; 16]` couldn't work on
+/// all kernels.
+pub(crate) fn checks_signedness(p: &Primitive) -> bool {
+    p.kind == PrimitiveKind::Integer && p.size > 1 && p.signedness != Signedness::Unchecked
 }
 
 /// Maps Rust field types to C, recording which `#[btf]` structs are needed
@@ -98,21 +113,18 @@ impl TypeMapper<'_> {
                 let name = last.ident.unraw().to_string();
 
                 if let Some(primitive) = primitive(&p.path) {
-                    if complete && primitive.c_type == "void" {
+                    if complete && primitive.kind == PrimitiveKind::Void {
                         return Err(syn::Error::new_spanned(
                             ty,
                             "`c_void` is only supported behind a pointer",
                         ));
                     }
-                    Ok(CType::Base(
-                        primitive.c_type.to_owned(),
-                        primitive.signedness,
-                    ))
+                    Ok(CType::Primitive(primitive))
                 } else if let Some(&idx) = self.known.get(&name) {
                     if complete {
                         self.deps.push(idx);
                     }
-                    Ok(CType::Base(format!("struct {name}"), Signedness::Unchecked))
+                    Ok(CType::Struct(name))
                 } else {
                     Err(syn::Error::new_spanned(
                         ty,
