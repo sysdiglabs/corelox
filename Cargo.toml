@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+askama = "0.16.1"
 btf-rs-parser = { path = "btf-rs-parser" }
 glob = "0.3"
 proc-macro2 = { version = "1", features = ["span-locations"] }
