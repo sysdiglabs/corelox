@@ -1,0 +1,7 @@
+[build]
+target = "bpfel-unknown-none"
+# BTF is needed for the CO-RE relocations
+rustflags = ["-C", "debuginfo=2", "-C", "link-arg=--btf"]
+
+[unstable]
+build-std = ["core"]

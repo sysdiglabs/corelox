@@ -1,0 +1,25 @@
+[package]
+name = "task-info"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# no_std, so there's no test harness to build it with
+[[bin]]
+name = "task-info"
+path = "src/main.rs"
+test = false
+bench = false
+
+[dependencies]
+aya-ebpf = "0.2"
+btf-rs-macros = { path = "../../btf-rs-macros" }
+
+[build-dependencies]
+btf-rs = { path = "../.." }
+
+[profile.release]
+panic = "abort"
+
+[profile.dev]
+panic = "abort"
