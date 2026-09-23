@@ -52,7 +52,7 @@ fn rust_primitive(name: &str) -> Option<&'static str> {
         "i64" => "long long",
         "i128" => "__int128",
         "isize" => "long",
-        "bool" => "_Bool",
+        "bool" => "bool",
         "f32" => "float",
         "f64" => "double",
         _ => return None,

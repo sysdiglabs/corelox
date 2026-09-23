@@ -61,3 +61,39 @@ fn invalid_glob() {
         .unwrap_err();
     assert!(matches!(err, btf_rs::Error::Glob { .. }), "{err:?}");
 }
+
+#[test]
+fn bindgen() {
+    let dir = tmp_dir("bindgen");
+    fs::write(
+        dir.join("src/a.rs"),
+        r#"#[btf] struct task { pid: i32, parent: *const task, #[btf(path = "c")] comm: [u8; 16] }"#,
+    )
+    .unwrap();
+
+    let paths = btf_rs::Bindgen::new(
+        btf_rs::Builder::new().file(dir.join("src/a.rs")),
+        dir.join("out"),
+    )
+    .generate()
+    .unwrap();
+
+    let bindings = fs::read_to_string(&paths.bindings).unwrap();
+    for expected in [
+        "pub type co_re_task_pid_t = core::ffi::c_int;",
+        "pub type co_re_task_comm_t = [core::ffi::c_uchar; 16usize];",
+        "#[link_name = \"co_re_task_parent__extern\"]",
+        "pub fn co_re_task_parent(\n        p: *const core::ffi::c_void,\n        out: *mut co_re_task_parent_t,\n    ) -> core::ffi::c_long;",
+        "pub fn co_re_task_has_comm() -> bool;",
+    ] {
+        assert!(bindings.contains(expected), "{expected}\n\n{bindings}");
+    }
+    // only the accessors, not the structs or anything from the included headers
+    assert!(!bindings.contains("pub struct"), "{bindings}");
+    assert!(!bindings.contains("bpf_probe_read_kernel"), "{bindings}");
+
+    let wrappers = fs::read_to_string(&paths.wrappers).unwrap();
+    assert!(wrappers.contains("co_re_task_parent__extern"), "{wrappers}");
+    let bitcode = fs::read(&paths.wrappers_bitcode).unwrap();
+    assert!(bitcode.starts_with(b"BC\xc0\xde"), "not LLVM bitcode");
+}
