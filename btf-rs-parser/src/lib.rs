@@ -1,6 +1,8 @@
 pub use zyn::{Diagnostic, syn};
 
 use zyn::TokenStream;
+use zyn::syn::ext::IdentExt;
+use zyn::syn::spanned::Spanned;
 use zyn::syn::{Attribute, Field, Fields, Ident, ItemStruct, Meta, Type, Visibility};
 
 // No `#[zyn("btf")]`: the derived `FromInput` rejects a bare `#[btf]`,
@@ -11,7 +13,9 @@ pub struct BtfStruct {}
 
 #[derive(zyn::Attribute)]
 pub struct BtfField {
-    /// C-style member path, e.g. `"struct.field.nested_field"`
+    /// Path of the C member this field maps to, relative to the struct,
+    /// e.g. `"se.vruntime"` for a member of an embedded struct.
+    /// Defaults to the field name.
     #[zyn(default)]
     pub path: Option<String>,
 }
@@ -50,8 +54,27 @@ impl BtfStruct {
 
 impl BtfField {
     pub fn from_field(field: &Field) -> zyn::Result<Self> {
-        Self::from_args(&btf_args(&field.attrs)?)
+        let attr = Self::from_args(&btf_args(&field.attrs)?)?;
+        if let Some(path) = &attr.path
+            && !path.split('.').all(is_c_ident)
+        {
+            let btf_attr = field.attrs.iter().find(|a| is_btf_attr(a));
+            return Err(zyn::mark::error(format!(
+                "invalid path `{path}`: expected C identifiers separated by dots"
+            ))
+            .span(btf_attr.expect("path comes from #[btf]").span())
+            .build());
+        }
+        Ok(attr)
     }
+}
+
+fn is_c_ident(s: &str) -> bool {
+    let mut chars = s.chars();
+    chars
+        .next()
+        .is_some_and(|c| c == '_' || c.is_ascii_alphabetic())
+        && chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
 }
 
 fn is_btf_attr(attr: &Attribute) -> bool {
@@ -79,6 +102,16 @@ pub struct BtfItemField {
     pub vis: Visibility,
     pub ident: Ident,
     pub ty: Type,
+}
+
+impl BtfItemField {
+    /// The C member path of this field: `path` split at dots, or the field name.
+    pub fn member_path(&self) -> Vec<String> {
+        match &self.attr.path {
+            Some(path) => path.split('.').map(str::to_owned).collect(),
+            None => vec![self.ident.unraw().to_string()],
+        }
+    }
 }
 
 impl BtfItem {
@@ -207,6 +240,25 @@ mod tests {
     fn field_path() {
         let attr = BtfField::from_field(&field(r#"#[btf(path = "foo.bar.baz")] x: u32"#)).unwrap();
         assert_eq!(attr.path.as_deref(), Some("foo.bar.baz"));
+    }
+
+    #[test]
+    fn invalid_path_is_err() {
+        for path in ["", ".", "a.", ".a", "a..b", "a.1b", "a-b", "a[0]", "a->b"] {
+            let src = format!(r#"#[btf(path = "{path}")] x: u32"#);
+            assert!(BtfField::from_field(&field(&src)).is_err(), "{path}");
+        }
+    }
+
+    #[test]
+    fn member_path() {
+        let item = BtfItem::from_item(&item(
+            r#"#[btf] struct Foo { r#type: u32, #[btf(path = "a.b_1._c")] x: u32, #[btf(path = "y")] z: u32 }"#,
+        ))
+        .unwrap()
+        .unwrap();
+        let paths: Vec<_> = item.fields.iter().map(BtfItemField::member_path).collect();
+        assert_eq!(paths, [vec!["type"], vec!["a", "b_1", "_c"], vec!["y"]]);
     }
 
     fn item(src: &str) -> ItemStruct {

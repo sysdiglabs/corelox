@@ -17,6 +17,10 @@ impl CType {
         self.declare(name.to_owned())
     }
 
+    pub fn is_pointer(&self) -> bool {
+        matches!(self, CType::Pointer(_))
+    }
+
     fn declare(&self, name: String) -> String {
         match self {
             CType::Base(base) => format!("{base} {name}"),

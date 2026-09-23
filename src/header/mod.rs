@@ -22,7 +22,7 @@ pub(crate) struct SourceStruct {
 #[derive(Template)]
 #[template(path = "header.h", escape = "none")]
 struct Header<'a> {
-    /// In source order
+    /// `#[btf]` structs in source order, followed by generated nested structs
     structs: &'a [CStruct],
     /// Ordered so that each struct comes after the structs it contains
     definitions: Vec<&'a CStruct>,
@@ -31,8 +31,12 @@ struct Header<'a> {
 struct CStruct {
     name: String,
     fields: Vec<CField>,
+    /// One per Rust field; empty for generated nested structs
+    accessors: Vec<Accessor>,
     /// Indices of structs that must be defined before this one
     deps: Vec<usize>,
+    /// Index of the `#[btf]` struct this one comes from
+    origin: usize,
 }
 
 struct CField {
@@ -40,24 +44,51 @@ struct CField {
     ty: CType,
 }
 
+struct Accessor {
+    /// The Rust field name
+    name: String,
+    /// The C member, e.g. `se.vruntime`
+    member: String,
+    is_pointer: bool,
+}
+
+/// A struct member while grouping `#[btf(path)]` fields into nested structs
+enum Member {
+    Field { ty: CType, deps: Vec<usize> },
+    Nested(Vec<(String, Member)>),
+}
+
 pub(crate) fn generate(structs: &[SourceStruct]) -> Result<String, Error> {
     let mut errors = Vec::new();
     let known = index_by_name(structs, &mut errors);
-    let cstructs: Vec<_> = structs
-        .iter()
-        .map(|s| to_c(s, &known, &mut errors))
-        .collect();
+
+    let mut cstructs = Vec::with_capacity(structs.len());
+    let mut nested = Vec::new();
+    for (idx, s) in structs.iter().enumerate() {
+        let (members, accessors) = members(s, &known, &mut errors);
+        let name = s.item.ident.unraw().to_string();
+        let (fields, deps) = flatten(&name, members, idx, structs.len(), &mut nested);
+        cstructs.push(CStruct {
+            name,
+            fields,
+            accessors,
+            deps,
+            origin: idx,
+        });
+    }
+    cstructs.append(&mut nested);
+
     if !errors.is_empty() {
         return Err(Error::Source(errors));
     }
 
     let definitions = definition_order(&cstructs)
         .map_err(|idx| {
-            let s = &structs[idx];
+            let s = &structs[cstructs[idx].origin];
             Error::Source(vec![format!(
                 "{}: error: #[btf] struct `{}` recursively contains itself",
                 location(&s.path, s.item.ident.span()),
-                cstructs[idx].name,
+                s.item.ident.unraw(),
             )])
         })?
         .into_iter()
@@ -94,26 +125,105 @@ fn index_by_name(structs: &[SourceStruct], errors: &mut Vec<String>) -> HashMap<
     known
 }
 
-fn to_c(s: &SourceStruct, known: &HashMap<String, usize>, errors: &mut Vec<String>) -> CStruct {
-    let mut mapper = TypeMapper {
-        known,
-        deps: Vec::new(),
-    };
-    let mut fields = Vec::new();
+/// Maps the fields of `s` to C, grouped into members by their paths.
+fn members(
+    s: &SourceStruct,
+    known: &HashMap<String, usize>,
+    errors: &mut Vec<String>,
+) -> (Vec<(String, Member)>, Vec<Accessor>) {
+    let mut members = Vec::new();
+    let mut accessors = Vec::new();
     for field in &s.item.fields {
-        match mapper.map(&field.ty) {
-            Ok(ty) => fields.push(CField {
-                name: field.ident.unraw().to_string(),
-                ty,
-            }),
-            Err(e) => error::syn_messages(&s.path, e, errors),
+        let mut mapper = TypeMapper {
+            known,
+            deps: Vec::new(),
+        };
+        let ty = match mapper.map(&field.ty) {
+            Ok(ty) => ty,
+            Err(e) => {
+                error::syn_messages(&s.path, e, errors);
+                continue;
+            }
+        };
+
+        let path = field.member_path();
+        let member = path.join(".");
+        accessors.push(Accessor {
+            name: field.ident.unraw().to_string(),
+            member: member.clone(),
+            is_pointer: ty.is_pointer(),
+        });
+        let field_member = Member::Field {
+            ty,
+            deps: mapper.deps,
+        };
+        if insert(&mut members, &path, field_member).is_err() {
+            errors.push(format!(
+                "{}: error: C member `{member}` conflicts with another field",
+                location(&s.path, field.ident.span()),
+            ));
         }
     }
-    CStruct {
-        name: s.item.ident.unraw().to_string(),
-        fields,
-        deps: mapper.deps,
+    (members, accessors)
+}
+
+/// Inserts `field` at `path`, creating nested members as needed.
+/// Fails if the path is already taken or runs through a non-nested member.
+fn insert(members: &mut Vec<(String, Member)>, path: &[String], field: Member) -> Result<(), ()> {
+    let (first, rest) = path.split_first().expect("non-empty path");
+    let existing = members.iter_mut().find(|(name, _)| name == first);
+    match (existing, rest.is_empty()) {
+        (None, true) => members.push((first.clone(), field)),
+        (None, false) => {
+            let mut nested = Vec::new();
+            insert(&mut nested, rest, field)?;
+            members.push((first.clone(), Member::Nested(nested)));
+        }
+        (Some((_, Member::Nested(nested))), false) => insert(nested, rest, field)?,
+        (Some(_), _) => return Err(()),
     }
+    Ok(())
+}
+
+/// Turns the members of struct `name` into C fields, adding a generated
+/// `{name}__{member}` struct to `nested` for each nested member.
+/// Returns the fields and the indices of structs they contain by value.
+fn flatten(
+    name: &str,
+    members: Vec<(String, Member)>,
+    origin: usize,
+    // index of the first generated struct
+    nested_base: usize,
+    nested: &mut Vec<CStruct>,
+) -> (Vec<CField>, Vec<usize>) {
+    let mut fields = Vec::new();
+    let mut deps = Vec::new();
+    for (member, m) in members {
+        match m {
+            Member::Field { ty, deps: d } => {
+                deps.extend(d);
+                fields.push(CField { name: member, ty });
+            }
+            Member::Nested(members) => {
+                let nested_name = format!("{name}__{member}");
+                let (nested_fields, nested_deps) =
+                    flatten(&nested_name, members, origin, nested_base, nested);
+                deps.push(nested_base + nested.len());
+                fields.push(CField {
+                    name: member,
+                    ty: CType::Base(format!("struct {nested_name}")),
+                });
+                nested.push(CStruct {
+                    name: nested_name,
+                    fields: nested_fields,
+                    accessors: Vec::new(),
+                    deps: nested_deps,
+                    origin,
+                });
+            }
+        }
+    }
+    (fields, deps)
 }
 
 /// Returns struct indices ordered so that each struct comes after the ones
