@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "corelox-macros"
+name = "corelox"
 version = "0.1.0"
 dependencies = [
  "corelox-parser",

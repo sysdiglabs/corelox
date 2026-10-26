@@ -270,20 +270,20 @@ dependencies = [
 name = "corelox"
 version = "0.1.0"
 dependencies = [
+ "corelox-parser",
+ "zyn",
+]
+
+[[package]]
+name = "corelox-build"
+version = "0.1.0"
+dependencies = [
  "askama",
  "bindgen",
  "btf-rs",
  "corelox-parser",
  "glob",
  "proc-macro2",
-]
-
-[[package]]
-name = "corelox-macros"
-version = "0.1.0"
-dependencies = [
- "corelox-parser",
- "zyn",
 ]
 
 [[package]]
@@ -547,7 +547,7 @@ version = "0.1.0"
 dependencies = [
  "aya-ebpf",
  "corelox",
- "corelox-macros",
+ "corelox-build",
 ]
 
 [[package]]

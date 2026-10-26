@@ -172,7 +172,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "corelox"
+name = "corelox-build"
 version = "0.1.0"
 dependencies = [
  "askama",

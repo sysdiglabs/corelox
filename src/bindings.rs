@@ -12,8 +12,8 @@ use crate::{Builder, Error};
 ///
 /// ```no_run
 /// let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
-/// let header = corelox::Builder::new().glob("src/**/*.rs");
-/// corelox::Bindgen::new(header, out_dir.join("corelox"))
+/// let header = corelox_build::Builder::new().glob("src/**/*.rs");
+/// corelox_build::Bindgen::new(header, out_dir.join("corelox"))
 ///     // only needed if libbpf's headers aren't in a default include path
 ///     .include_dir("vendor/libbpf/include")
 ///     .generate()

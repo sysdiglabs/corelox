@@ -13,10 +13,10 @@ bench = false
 
 [dependencies]
 aya-ebpf = "0.2"
-corelox-macros = { path = "../../corelox-macros" }
+corelox = { path = "../../corelox" }
 
 [build-dependencies]
-corelox = { path = "../.." }
+corelox-build = { path = "../.." }
 
 [profile.release]
 panic = "abort"
