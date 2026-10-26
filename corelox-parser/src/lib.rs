@@ -15,8 +15,8 @@ pub struct BtfStruct {}
 
 #[derive(zyn::Attribute)]
 pub struct BtfField {
-    /// Path of the C member this field maps to, relative to the struct,
-    /// e.g. `"se.vruntime"` for a member of an embedded struct.
+    /// Path of the C member this field maps to, relative to the struct.
+    /// For example, `"se.vruntime"` for a member of an embedded struct.
     /// Defaults to the field name.
     #[zyn(default)]
     pub path: Option<String>,
@@ -48,7 +48,7 @@ impl zyn::FromInput for BtfStruct {
 
 impl BtfStruct {
     /// Parses the arguments of the `#[btf(...)]` attribute macro itself
-    /// (i.e. the tokens between the parentheses).
+    /// (the tokens between the parentheses).
     pub fn from_tokens(tokens: TokenStream) -> zyn::Result<Self> {
         Self::from_args(&zyn::syn::parse2(tokens).map_err(zyn::Diagnostic::from)?)
     }
@@ -118,7 +118,7 @@ impl BtfItemField {
 
 impl BtfItem {
     /// Builds a `BtfItem` from struct-level settings obtained separately,
-    /// e.g. from the attribute macro's arguments.
+    /// for example from the arguments of the attribute macro.
     pub fn new(attr: BtfStruct, item: &ItemStruct) -> zyn::Result<Self> {
         let mut diags = zyn::mark::new();
         let mut has_errors = false;
@@ -169,9 +169,9 @@ impl BtfItem {
     }
 
     /// Builds a `BtfItem` taking struct-level settings from the `#[btf]`
-    /// attribute(s) on the struct itself, e.g. when scanning sources in build.rs.
+    /// attribute(s) on the struct itself. The source scan in build.rs uses it.
     ///
-    /// Returns `None` if the struct has no `#[btf]` attribute.
+    /// If the struct has no `#[btf]` attribute, returns `None`.
     pub fn from_item(item: &ItemStruct) -> zyn::Result<Option<Self>> {
         if !item.attrs.iter().any(is_btf_attr) {
             return Ok(None);
@@ -327,7 +327,7 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        // not a #[btf] struct, so it isn't validated either
+        // not a #[btf] struct, so it is not validated either
         assert!(
             BtfItem::from_item(&item("struct Foo<T>(T);"))
                 .unwrap()

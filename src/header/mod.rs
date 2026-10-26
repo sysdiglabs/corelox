@@ -32,7 +32,7 @@ struct Header<'a> {
 struct CStruct {
     name: String,
     fields: Vec<CField>,
-    /// One per Rust field; empty for generated nested structs
+    /// One per Rust field. Empty for generated nested structs.
     accessors: Vec<Accessor>,
     /// Indices of structs that must be defined before this one
     deps: Vec<usize>,
@@ -48,7 +48,7 @@ struct CField {
 struct Accessor {
     /// The Rust field name
     name: String,
-    /// The C member, e.g. `se.vruntime`
+    /// The C member, for example `se.vruntime`
     member: String,
     ty: CType,
     signedness_check: Option<SignednessCheck>,
@@ -56,7 +56,7 @@ struct Accessor {
 
 /// Checks that an integer has the same signedness in the kernel as in Rust
 struct SignednessCheck {
-    /// The integer, e.g. `se.vruntime` or `comm[0]`
+    /// The integer, for example `se.vruntime` or `comm[0]`
     member: String,
     signed: bool,
 }
@@ -67,8 +67,8 @@ enum Member {
     Nested(Vec<(String, Member)>),
 }
 
-/// Generates the header, checking field types against `btf` if given.
-/// Returns the header and any warnings.
+/// Generates the header. If `btf` is set, also checks the field types against it.
+/// Returns the header and the warnings.
 pub(crate) fn generate(
     structs: &[SourceStruct],
     btf: Option<&btf_rs::Btf>,
@@ -125,7 +125,7 @@ pub(crate) fn generate(
         structs: &cstructs,
         definitions,
     };
-    // rendering only fails if a `Display` impl does, and ours don't
+    // only a failing `Display` impl makes rendering fail, and ours do not fail
     Ok((header.render().expect("failed to render header"), warnings))
 }
 
@@ -199,8 +199,8 @@ fn members(
     (members, accessors)
 }
 
-/// Inserts `field` at `path`, creating nested members as needed.
-/// Fails if the path is already taken or runs through a non-nested member.
+/// Inserts `field` at `path`. Also creates the necessary nested members.
+/// If the path is already in use or goes through a non-nested member, fails.
 fn insert(members: &mut Vec<(String, Member)>, path: &[String], field: Member) -> Result<(), ()> {
     let (first, rest) = path.split_first().expect("non-empty path");
     let existing = members.iter_mut().find(|(name, _)| name == first);

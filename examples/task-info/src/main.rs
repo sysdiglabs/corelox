@@ -12,7 +12,7 @@ use aya_ebpf::programs::ProbeContext;
 use corelox::btf;
 
 /// Only the fields we need, named as in the kernel's `struct task_struct`.
-/// Their offsets get fixed up for the running kernel when the program loads.
+/// When the program loads, libbpf fixes their offsets for the running kernel.
 #[btf]
 pub struct task_struct {
     pub pid: i32,

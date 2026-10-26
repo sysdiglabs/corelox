@@ -22,8 +22,8 @@ use crate::{Builder, Error};
 ///
 /// The accessors are `static inline` C functions, so bindgen also emits
 /// non-inline wrappers for them in C (see `--wrap-static-fns`). These get
-/// compiled with clang to LLVM bitcode, which is passed to the linker
-/// (bpf-linker) to be LTO'd with the Rust code.
+/// compiled with clang to LLVM bitcode. The linker (bpf-linker) links the
+/// bitcode with the Rust code through LTO.
 ///
 /// Also prints `cargo:rerun-if-changed` for all the Rust sources scanned
 /// by `header`.
@@ -35,21 +35,22 @@ pub struct Bindgen {
     type_check: TypeCheck,
 }
 
-/// What to check the types of `#[btf]` fields against when building.
+/// The BTF that the build checks the types of `#[btf]` fields against.
 ///
-/// The accessors check the types when the program is loaded anyway, and
-/// reject it if they don't match the kernel it's loaded on. Checking at
-/// build time catches mismatches early, with source locations, but only
-/// against one kernel.
+/// At load time, the accessors also check the types. If the types do not
+/// match the kernel that loads the program, the accessors reject it. The
+/// build-time check finds mismatches earlier and shows source locations,
+/// but it uses only one kernel.
 ///
 /// Mismatches are errors. Missing structs and members are only warnings,
-/// since other kernels may have them.
+/// because other kernels can have them.
 #[derive(Debug, Clone, Default)]
 pub enum TypeCheck {
-    /// The running kernel's BTF, if it's available (`/sys/kernel/btf/vmlinux`)
+    /// The BTF of the running kernel (`/sys/kernel/btf/vmlinux`). If it is not
+    /// available, the build skips the check.
     #[default]
     RunningKernel,
-    /// A raw BTF file, e.g. `/sys/kernel/btf/vmlinux` copied from the target machine
+    /// A raw BTF file, for example `/sys/kernel/btf/vmlinux` from the target machine
     File(PathBuf),
     Off,
 }
@@ -92,7 +93,7 @@ pub struct Prepared {
 }
 
 impl Bindgen {
-    /// `out_dir` is where all the generated files go, e.g. a subdirectory of `$OUT_DIR`.
+    /// `out_dir` gets all the generated files. For example, use a subdirectory of `$OUT_DIR`.
     pub fn new(header: Builder, out_dir: impl AsRef<Path>) -> Self {
         Self {
             header,
@@ -103,8 +104,9 @@ impl Bindgen {
         }
     }
 
-    /// Adds a directory to search for included headers (e.g. libbpf's `bpf/*.h`),
-    /// both when generating bindings and compiling the wrappers.
+    /// Adds a directory to search for included headers, for example the
+    /// libbpf headers `bpf/*.h`. Binding generation and wrapper compilation
+    /// both use it.
     pub fn include_dir(mut self, dir: impl AsRef<Path>) -> Self {
         self.include_dirs.push(dir.as_ref().to_owned());
         self
@@ -185,7 +187,7 @@ impl Prepared {
     /// bindings is passed to the program as `$CORELOX_BINDINGS`, which is
     /// where the `#[btf]` macro finds them.
     pub fn generate(self) -> Result<OutputPaths, Error> {
-        // bindgen only writes the wrappers if there are any, so don't leave stale ones around
+        // if there are no wrappers, bindgen does not write the file, so remove stale ones
         remove_if_exists(&self.paths.wrappers)?;
 
         let bindings = self.bindgen.generate().map_err(Error::Bindgen)?;
@@ -235,7 +237,7 @@ fn load_btf(type_check: &TypeCheck) -> Result<Option<btf_rs::Btf>, Error> {
         }
         TypeCheck::File(path) => path.as_path(),
     };
-    // e.g. after booting another kernel
+    // for example, after a boot into another kernel
     println!("cargo:rerun-if-changed={}", path.display());
     btf_rs::Btf::from_file(path).map(Some).map_err(Error::Btf)
 }
@@ -254,12 +256,12 @@ fn remove_if_exists(path: &Path) -> Result<(), Error> {
     }
 }
 
-/// Checks that the wrappers' bitcode will be readable by bpf-linker, which uses
-/// the LLVM of the Rust toolchain doing the build (with its default `rust-llvm`
-/// feature). An older LLVM can't read bitcode from a newer one, so linking
-/// would fail with just `Invalid record`.
+/// Makes sure that bpf-linker can read the bitcode of the wrappers. With its
+/// default `rust-llvm` feature, bpf-linker uses the LLVM of the Rust
+/// toolchain that does the build. An older LLVM cannot read bitcode from a
+/// newer one. Then the link fails with only `Invalid record`.
 ///
-/// Skipped if either version can't be determined.
+/// If one of the versions is unknown, the check does nothing.
 fn check_llvm_versions(rustc: &OsStr, clang: &Path) -> Result<(), Error> {
     let (Some(rustc_version), Some(clang_version)) = (
         command_output(rustc.as_ref(), "-vV"),
@@ -304,8 +306,8 @@ fn compile_wrappers(
     paths: &OutputPaths,
 ) -> Result<(), Error> {
     let mut cmd = Command::new(clang);
-    // bitcode rather than an object file, so that it gets LTO'd with the Rust code;
-    // -g is needed for the BTF that CO-RE relocations refer to
+    // bitcode and not an object file, for LTO with the Rust code.
+    // CO-RE relocations refer to BTF, which needs -g.
     cmd.args(["--target=bpf", "-O2", "-g", "-emit-llvm", "-c"])
         .args(include_args(include_dirs))
         .arg(&paths.wrappers)

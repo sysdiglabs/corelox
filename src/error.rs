@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use corelox_parser::{Diagnostic, syn};
 use proc_macro2::Span;
 
-// `Debug` is implemented via `Display`, because that's what build scripts
-// print when they `unwrap()` or return an error from `main`.
+// `Debug` uses `Display`. When a build script calls `unwrap()` or returns an
+// error from `main`, it prints the `Debug` output.
 pub enum Error {
     /// An invalid glob pattern
     Glob {
@@ -19,7 +19,7 @@ pub enum Error {
     /// Errors in the input sources, each formatted as `file:line:col: error: message`
     Source(Vec<String>),
     Bindgen(bindgen::BindgenError),
-    /// The BTF to check the field types against couldn't be read
+    /// The build cannot read the BTF for the field type check
     Btf(btf_rs::Error),
     /// clang's LLVM is newer than the Rust toolchain's, which bpf-linker uses
     LlvmVersion {
@@ -90,10 +90,10 @@ pub(crate) fn syn_messages(path: &Path, err: syn::Error, out: &mut Vec<String>) 
 
 /// Flattens a zyn diagnostic tree into `file:line:col: level: message` lines.
 ///
-/// zyn doesn't expose a diagnostic's own message, only its `Display`
-/// (the own message, if any, followed by the children, one per line),
-/// so a node has a message of its own iff its `Display` differs from
-/// that of its children.
+/// zyn does not expose the own message of a diagnostic. It exposes only its
+/// `Display`, which is the own message (when there is one) and then the
+/// children, one per line. Thus a node has its own message exactly in this
+/// case: its `Display` is different from the `Display` of its children.
 pub(crate) fn diagnostic_messages(path: &Path, diag: &Diagnostic, out: &mut Vec<String>) {
     let text = diag.to_string();
     let children: Vec<_> = diag.iter().map(ToString::to_string).collect();

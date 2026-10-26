@@ -16,7 +16,7 @@ pub(crate) enum CType {
 }
 
 impl CType {
-    /// Renders a C declaration of `name` with this type, e.g. `unsigned char *name[4]`.
+    /// Renders a C declaration of `name` with this type, for example `unsigned char *name[4]`.
     pub fn declaration(&self, name: &str) -> String {
         self.declare(name.to_owned())
     }
@@ -25,9 +25,10 @@ impl CType {
         matches!(self, CType::Pointer(_))
     }
 
-    /// Returns which integer's signedness to check, relative to a member of
-    /// this type (e.g. `[0]` for the elements of an array), and whether it
-    /// should be signed. `None` if there's nothing to check.
+    /// Returns the integer to check the signedness of, relative to a member of
+    /// this type (for example, `[0]` for the elements of an array). Also
+    /// returns whether the integer must be signed. If there is nothing to
+    /// check, returns `None`.
     pub fn signedness_check(&self) -> Option<(String, bool)> {
         match self {
             CType::Primitive(p) if checks_signedness(p) => {
@@ -60,10 +61,10 @@ impl CType {
 
 /// Whether to check the signedness of an integer.
 ///
-/// Not for single bytes: the kernel's `char` looks just like an `unsigned char`
-/// or a `signed char` in BTF, depending on the kernel (it's built with
-/// `-funsigned-char` since 6.2), so e.g. `comm: [u8; 16]` couldn't work on
-/// all kernels.
+/// Not for single bytes. In BTF, the kernel's `char` is the same as an
+/// `unsigned char` on some kernels and a `signed char` on others. Since 6.2,
+/// the kernel builds with `-funsigned-char`. Without this exception, a field
+/// such as `comm: [u8; 16]` fails on some kernels.
 pub(crate) fn checks_signedness(p: &Primitive) -> bool {
     p.kind == PrimitiveKind::Integer && p.size > 1 && p.signedness != Signedness::Unchecked
 }
@@ -82,8 +83,8 @@ impl TypeMapper<'_> {
         self.map_inner(ty, true)
     }
 
-    /// `complete` is set when the C type must be complete,
-    /// i.e. for by-value fields and array elements.
+    /// For by-value fields and array elements, the C type must be complete.
+    /// For these, `complete` is set.
     fn map_inner(&mut self, ty: &Type, complete: bool) -> syn::Result<CType> {
         match ty {
             Type::Paren(p) => self.map_inner(&p.elem, complete),

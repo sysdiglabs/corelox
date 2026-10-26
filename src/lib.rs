@@ -22,10 +22,10 @@ use header::SourceStruct;
 /// Collects `#[btf]` structs from Rust source files and generates a C header
 /// with the corresponding struct definitions.
 ///
-/// Files are scanned in the order they were added. Each file is only scanned
-/// once, even if it's added several times (e.g. directly and via a glob).
-/// Inline modules are scanned too, but `mod foo;` declarations aren't followed:
-/// add those files separately.
+/// The builder scans the files in the order that you add them. It scans each
+/// file only once. This is also true for a file that you add more than once,
+/// for example directly and through a glob. The scan includes inline modules,
+/// but it does not follow `mod foo;` declarations. Add those files separately.
 #[derive(Debug, Clone, Default)]
 pub struct Builder {
     inputs: Vec<Input>,
@@ -53,7 +53,7 @@ impl Builder {
         paths.into_iter().fold(self, Self::file)
     }
 
-    /// Adds all files matching a glob pattern, e.g. `"src/**/*.rs"`, to scan.
+    /// Adds all files that match a glob pattern, for example `"src/**/*.rs"`, to scan.
     pub fn glob(mut self, pattern: impl Into<String>) -> Self {
         self.inputs.push(Input::Glob(pattern.into()));
         self
@@ -123,8 +123,8 @@ fn generate_header(sources: Vec<(PathBuf, String)>) -> Result<String, Error> {
     generate_checked_header(sources, None).map(|(header, _)| header)
 }
 
-/// Generates the header, checking the field types against `btf` if given.
-/// Returns the header and any warnings.
+/// Generates the header. If `btf` is set, also checks the field types against it.
+/// Returns the header and the warnings.
 fn generate_checked_header(
     sources: Vec<(PathBuf, String)>,
     btf: Option<&btf_rs::Btf>,
@@ -198,9 +198,10 @@ mod tests {
 #include <bpf/bpf_core_read.h>
 
 /*
- * Calling these makes the verifier reject the program. The accessors only call
- * them when a field's Rust type doesn't match the running kernel's, which the
- * verifier knows after the CO-RE relocations (see the accessors).
+ * A call to these makes the verifier reject the program. The accessors call
+ * them only on a mismatch between the Rust type of a field and the kernel
+ * type. After the CO-RE relocations, the verifier knows about the mismatch
+ * (see the accessors).
  */
 static void (*const corelox_size_mismatch)(void) = (void *)195900001;
 static void (*const corelox_signedness_mismatch)(void) = (void *)195900002;
@@ -429,7 +430,7 @@ struct task_struct {
         ] {
             assert!(header.contains(expected), "{expected}");
         }
-        // generated nested structs don't get accessors
+        // generated nested structs do not get accessors
         assert!(!header.contains("co_re_task_struct__se"));
 
         // signedness is checked on the C member, and on the elements of arrays,
@@ -511,7 +512,7 @@ struct task_struct {
         assert_eq!(errors, [""; 0]);
         assert_eq!(warnings, [""; 0]);
 
-        // signedness isn't checked for single bytes, see `checks_signedness`
+        // single bytes have no signedness check, see `checks_signedness`
         for comm in ["[u8; 16]", "[i8; 16]"] {
             let (errors, _) = check(&format!("#[btf] struct task_struct {{ comm: {comm} }}"));
             assert_eq!(errors, [""; 0], "{comm}");

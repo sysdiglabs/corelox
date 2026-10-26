@@ -1,8 +1,8 @@
 //! Checking `#[btf]` field types against a kernel's BTF.
 //!
 //! This is the build-time counterpart of the checks in the accessors, which
-//! reject the program at load time on the kernel it's loaded on. It only
-//! knows about one kernel, but reports mismatches with source locations.
+//! reject the program at load time on the kernel that loads it. It knows
+//! only one kernel, but it reports mismatches with source locations.
 
 use btf_rs::{Btf, Member, Struct, Type};
 use corelox_parser::syn::ext::IdentExt;
@@ -13,8 +13,8 @@ use super::{Accessor, SourceStruct};
 use crate::error::location;
 
 /// Checks the fields of `s` against the kernel struct of the same name.
-/// Mismatches are errors, and missing structs or members only warnings:
-/// they may exist in other kernels.
+/// Mismatches are errors. Missing structs or members are only warnings,
+/// because other kernels can have them.
 pub(super) fn check_struct(
     btf: &Btf,
     s: &SourceStruct,
@@ -50,7 +50,7 @@ pub(super) fn check_struct(
 }
 
 enum Finding {
-    /// The member, as far as it could be found
+    /// The part of the member path that the check found
     Missing(String),
     Mismatch(String),
 }
@@ -125,7 +125,7 @@ fn find_member(btf: &Btf, s: &Struct, name: &str) -> Result<Option<Member>, btf_
     Ok(None)
 }
 
-/// Resolves typedefs and qualifiers, returning the outermost typedef's name, if any.
+/// Resolves typedefs and qualifiers. Also returns the name of the outermost typedef, or `None`.
 fn skip_modifiers(btf: &Btf, mut t: Type) -> Result<(Option<String>, Type), btf_rs::Error> {
     let mut typedef = None;
     loop {
@@ -168,7 +168,7 @@ impl Subject {
     }
 }
 
-/// Compares a kernel type with a Rust one, returning the mismatch, if any.
+/// Compares a kernel type with a Rust type. Returns the mismatch, or `None`.
 fn compare(
     btf: &Btf,
     kernel: Type,
@@ -241,7 +241,7 @@ fn compare(
     }
 }
 
-/// The name of a struct (or its forward declaration), if it is one.
+/// The name of a struct (or its forward declaration). For other types, `None`.
 fn struct_name(btf: &Btf, t: &Type) -> Result<Option<String>, btf_rs::Error> {
     Ok(match t {
         Type::Struct(s) => Some(btf.resolve_name(s)?),

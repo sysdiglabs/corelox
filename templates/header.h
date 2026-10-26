@@ -7,9 +7,10 @@
 #include <bpf/bpf_core_read.h>
 
 /*
- * Calling these makes the verifier reject the program. The accessors only call
- * them when a field's Rust type doesn't match the running kernel's, which the
- * verifier knows after the CO-RE relocations (see the accessors).
+ * A call to these makes the verifier reject the program. The accessors call
+ * them only on a mismatch between the Rust type of a field and the kernel
+ * type. After the CO-RE relocations, the verifier knows about the mismatch
+ * (see the accessors).
  */
 static void (*const corelox_size_mismatch)(void) = (void *)195900001;
 static void (*const corelox_signedness_mismatch)(void) = (void *)195900002;

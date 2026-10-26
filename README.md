@@ -1,12 +1,13 @@
 # corelox
 
-CO-RE (Compile Once – Run Everywhere) access to kernel structs from Rust BPF
-programs.
+corelox gives Rust BPF programs CO-RE (Compile Once, Run Everywhere) access
+to kernel structs.
 
-Declare the fields you need of a kernel struct with `#[btf]`, and read them
-through generated accessors. Each read is a CO-RE relocation, which libbpf
-fixes up for the running kernel's layout when the program loads, so the
-program works across kernel versions without recompiling.
+You declare the kernel struct fields that you need with `#[btf]`. Then you
+read them through generated accessors. Each read is a CO-RE relocation. A
+CO-RE relocation is a reference that libbpf adjusts at load time. When the
+program loads, libbpf fixes each read for the layout of the running kernel.
+Thus the program works on different kernel versions without a new compile.
 
 ```rust
 use corelox::btf;
@@ -31,17 +32,20 @@ if task_struct::has_vruntime() {
 
 ## How it works
 
-Rust has no equivalent of clang's `__builtin_preserve_access_index`, so the
-field accesses are done in C:
+Rust has no equivalent of the clang builtin
+`__builtin_preserve_access_index`. For this reason, C code does the field
+accesses:
 
-1. `corelox_build::Bindgen`, called from build.rs, scans the program's sources
-   for `#[btf]` structs and generates a C header with matching struct definitions
-   and a `static inline` accessor for each field
-2. bindgen generates Rust bindings for the accessors, along with non-inline C
-   wrappers for them (`--wrap-static-fns`)
-3. clang compiles the wrappers to BPF LLVM bitcode, which bpf-linker LTOs with
-   the Rust code, so the accessors get inlined into the program
-4. the `#[btf]` macro turns each struct into a handle calling the accessors
+1. `corelox_build::Bindgen` runs from build.rs. It scans the program's
+   sources for `#[btf]` structs. Then it generates a C header with matching
+   struct definitions and a `static inline` accessor for each field.
+2. bindgen generates Rust bindings for the accessors. It also generates
+   non-inline C wrappers for them (`--wrap-static-fns`).
+3. clang compiles the wrappers to BPF LLVM bitcode. bpf-linker links this
+   bitcode with the Rust code through LTO (link-time optimization). Thus the
+   accessors are inlined into the program.
+4. The `#[btf]` macro turns each struct into a handle that calls the
+   accessors.
 
 ## Usage
 
@@ -68,9 +72,10 @@ corelox = { path = "..." }
 corelox-build = { path = "..." }
 ```
 
-The build script has to belong to the BPF program's binary crate, which is
-what the wrappers get linked into. The program also needs BTF for the
-relocations, e.g. in `.cargo/config.toml`:
+The build script must belong to the binary crate of the BPF program,
+because the wrappers are linked into that crate. The program also needs BTF
+for the relocations. BTF (BPF Type Format) is type information for BPF
+programs. For example, you can enable it in `.cargo/config.toml`:
 
 ```toml
 [build]
@@ -81,75 +86,80 @@ rustflags = ["-C", "debuginfo=2", "-C", "link-arg=--btf"]
 build-std = ["core"]
 ```
 
-See [`examples/task-info`](examples/task-info) for a complete program, with
-instructions for checking its relocations and running it.
+For a complete program, see [`examples/task-info`](examples/task-info). Its
+README also tells you how to check its relocations and how to run it.
 
 ### The generated API
 
 A `#[btf]` struct becomes a `Copy` wrapper around a pointer to the kernel
-struct, without any fields. The struct has to be named like the kernel's,
-since that's how libbpf matches it. It gets:
+struct, without fields. The struct must have the same name as the kernel
+struct, because libbpf uses the name to match them. The struct gets these
+functions:
 
 - `from_ptr(*const c_void) -> Self` and `as_ptr(self) -> *const c_void`
 - for each field `foo`:
-  - `foo(self) -> Result<T, c_long>`, reading it with `bpf_probe_read_kernel`,
-    which returns the (negative) error code on failure
-  - `has_foo() -> bool`, checking whether the running kernel has the field
+  - `foo(self) -> Result<T, c_long>`, which reads the field with
+    `bpf_probe_read_kernel`. On failure, it returns the negative error code.
+  - `has_foo() -> bool`, which tells you whether the running kernel has the field
 
-Fields can be:
+Fields can have these types:
 
 | Rust type | Accessor returns |
 |---|---|
 | primitives (`u32`, `i64`, `bool`, ...) and `core::ffi` types (`c_int`, ...) | the same |
-| arrays, e.g. `[c_char; 16]` | the same, with pointers to `#[btf]` structs mapped as below |
-| pointers to `#[btf]` structs, e.g. `*const task_struct` | the struct's wrapper, e.g. `task_struct` |
-| other pointers, e.g. `*const u8`, `*const c_void` | the same |
+| arrays, for example `[c_char; 16]` | the same, with pointers to `#[btf]` structs mapped as below |
+| pointers to `#[btf]` structs, for example `*const task_struct` | the wrapper of the struct, for example `task_struct` |
+| other pointers, for example `*const u8`, `*const c_void` | the same |
 
-`#[btf]` structs can't be read by value, but their fields can be accessed with
-`#[btf(path = "...")]`: a dot-separated path of the C member, relative to the
-struct. The accessors are named after the Rust field. A single-part `path`
-just renames the member.
+You cannot read a `#[btf]` struct by value. But you can access its fields
+with `#[btf(path = "...")]`. The path is a dot-separated path to the C
+member, relative to the struct. The accessors get the name of the Rust
+field. A path with one part only renames the member.
 
-Structs must have named fields and can't be generic.
+Each field of a struct must have a name. Structs cannot be generic.
 
 ### Type checks
 
-The Rust field types have to match the kernel's: a `u64` read from a 4-byte
-`int` would pick up the neighbouring bytes, and libbpf doesn't check sizes
-or signedness when it relocates reads. So the types get checked twice:
+The Rust field types must match the kernel types. When libbpf relocates reads,
+it does not check sizes or signedness. Thus a `u64` read from a 4-byte
+`int` also gets the next 4 bytes. For this reason, corelox checks the types
+two times:
 
-- **when the program is loaded**, on the kernel it's loaded on: each accessor
-  compares the Rust type's size (and signedness, for integers) with the
-  kernel's, using CO-RE relocations. On a mismatch, it calls a nonexistent
-  helper, so the verifier rejects the program with
-  `invalid func unknown#195900001` (size) or `#195900002` (signedness),
-  next to a source line naming the field
-- **when building**, against the BTF of one kernel: the running one's
-  (`/sys/kernel/btf/vmlinux`) by default, or a file set with
-  `Bindgen::type_check`. Mismatches fail the build with their source
-  locations, e.g.
+- At load time, on the kernel that loads the program. Each accessor uses
+  CO-RE relocations to compare the size of the Rust type with the size of
+  the kernel type. For integers, it also compares the signedness. If the
+  types do not match, the accessor calls a helper that does not exist. The
+  verifier then rejects the program with `invalid func unknown#195900001`
+  (size) or `#195900002` (signedness). The message is next to a source line
+  that names the field.
+- At build time, against the BTF of one kernel. By default, this is the
+  running kernel (`/sys/kernel/btf/vmlinux`). To use a different file, set it
+  with `Bindgen::type_check`. If the types do not match, the build fails and
+  shows the source location. For example:
 
   ```
   src/main.rs:18:9: error: `task_struct::pid`: the kernel's `pid` is `pid_t` (4 bytes, signed), but the Rust type is 8 bytes
   ```
 
-  Missing structs and fields are only warnings, since other kernels may have
-  them (use `has_foo()` to check at runtime).
+  Missing structs and fields cause only warnings, because other kernels can
+  have them. To check for them at runtime, use `has_foo()`.
 
-Signedness isn't checked for single bytes: the kernel's `char` looks like
-either `unsigned char` or `signed char` in BTF, depending on the kernel, so
-e.g. `comm: [u8; 16]` wouldn't work everywhere otherwise. Bitfields aren't
-supported.
+corelox does not check signedness for single bytes. In BTF, the kernel's
+`char` is `unsigned char` on some kernels and `signed char` on others.
+Without this exception, a field such as `comm: [u8; 16]` fails on some
+kernels. corelox does not support bitfields.
 
 ## Requirements
 
 - nightly Rust with `rust-src`, for `build-std` on the BPF target
 - [bpf-linker](https://github.com/aya-rs/bpf-linker) (`cargo install bpf-linker`)
-- clang and libclang, with LLVM no newer than the Rust toolchain's
-  (`rustc -vV`), since bpf-linker uses the Rust toolchain's LLVM to link
-  the bitcode clang produces. The build checks this.
-- the libbpf headers (e.g. `libbpf-dev` on Debian/Ubuntu). If they aren't
-  in a default include path, add it with `Bindgen::include_dir`.
+- clang and libclang. Their LLVM version must not be newer than the LLVM
+  version of the Rust toolchain (`rustc -vV`). The reason is that bpf-linker
+  uses the LLVM of the Rust toolchain to link the bitcode from clang. The
+  build makes sure that the versions are compatible.
+- the libbpf headers (for example, `libbpf-dev` on Debian or Ubuntu). If the
+  headers are not in a default include path, add the path with
+  `Bindgen::include_dir`.
 
 The build can show this warning from bpf-linker:
 
@@ -163,15 +173,16 @@ library, so bpf-linker cannot load it, but the link still succeeds.
 
 ## Crates
 
-- `corelox-build`: the build-time part: header generation (`Builder`) and
-  bindings, wrappers and linking (`Bindgen`)
+- `corelox-build`: the build-time part. It contains header generation
+  (`Builder`) and bindings, wrappers and linking (`Bindgen`).
 - `corelox`: the `#[btf]` attribute macro
-- `corelox-parser`: parsing of `#[btf]` structs, shared by the two
+- `corelox-parser`: the parser for `#[btf]` structs, which the other two
+  crates share
 
 ## Limitations
 
-- only a plain `#[btf]` is recognized when scanning sources, so the macro has
-  to be imported under that name
-- `mod foo;` declarations aren't followed when scanning: the files have to be
-  covered by the builder's inputs (e.g. a glob)
-- paths can't go through pointers or array elements
+- The source scan recognizes only a plain `#[btf]`. Thus you must import the
+  macro under that name.
+- The source scan does not follow `mod foo;` declarations. The builder inputs
+  must include these files, for example through a glob.
+- A path cannot go through pointers or array elements.

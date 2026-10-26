@@ -1,13 +1,15 @@
 # task-info
 
-An end-to-end example of `#[btf]` structs: a kprobe on `do_nanosleep` that
-logs a few fields of the current task and its parent, read through CO-RE
-accessors, so it works across kernel versions without recompiling.
+This is an end-to-end example of `#[btf]` structs. It is a kprobe on
+`do_nanosleep`. A kprobe is a BPF program attached to the start of a
+kernel function. This kprobe logs some fields of the current task and its parent. It
+reads the fields through CO-RE accessors. Thus it works on different kernel
+versions without a new compile.
 
-- `src/main.rs` declares the fields it needs of `struct task_struct` with
-  `#[btf]`, and reads them with the generated accessors
-- `build.rs` generates the C header and wrappers for them with
-  `corelox_build::Bindgen`, and has them linked into the program
+- `src/main.rs` declares the `struct task_struct` fields that it needs with
+  `#[btf]`. It reads them with the generated accessors.
+- `build.rs` uses `corelox_build::Bindgen` to generate the C header and the
+  wrappers for the accessors. It also links them into the program.
 
 ## Requirements
 
@@ -15,7 +17,7 @@ accessors, so it works across kernel versions without recompiling.
 - [bpf-linker](https://github.com/aya-rs/bpf-linker) (`cargo install bpf-linker`)
 - clang and libclang, with LLVM no newer than the nightly's
   (`rustc +nightly -vV`)
-- the libbpf headers (e.g. `libbpf-dev` on Debian/Ubuntu)
+- the libbpf headers (for example, `libbpf-dev` on Debian or Ubuntu)
 - bpftool, to check and load the program
 
 ## Building
@@ -30,16 +32,17 @@ bpf-linker (see the [top-level README](../../README.md#requirements)).
 
 ## Checking the relocations (no root needed)
 
-`bpftool gen min_core_btf` resolves the program's CO-RE relocations against
-the running kernel's BTF, like loading it would:
+`bpftool gen min_core_btf` resolves the CO-RE relocations of the program
+against the BTF of the running kernel. It does this in the same way as the
+kernel does at load time:
 
 ```sh
 bpftool -d gen min_core_btf /sys/kernel/btf/vmlinux /tmp/task-info.btf \
     target/bpfel-unknown-none/release/task-info 2>&1 | grep matching
 ```
 
-Each field read shows up as a relocation matched to the kernel's
-`struct task_struct`, with the kernel's offset, e.g.:
+Each field read is a relocation that matches the `struct task_struct` of
+the kernel. The output shows the offset in the kernel struct. For example:
 
 ```
 relo #2: matching candidate #0 <byte_off> [...] struct task_struct.tgid (0:95 @ offset 2804)
