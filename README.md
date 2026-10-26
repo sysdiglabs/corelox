@@ -151,6 +151,16 @@ supported.
 - the libbpf headers (e.g. `libbpf-dev` on Debian/Ubuntu). If they aren't
   in a default include path, add it with `Bindgen::include_dir`.
 
+The build can show this warning from bpf-linker:
+
+```
+warning: linker stderr: unable to open LLVM shared lib .../libLLVM-23-rust-1.100.0-nightly.so: ... file too short
+```
+
+You can ignore it. In the rustup toolchain, that file is a linker script that
+points to the real library (`libLLVM.so.23.1-rust-...`). It is not a shared
+library, so bpf-linker cannot load it, but the link still succeeds.
+
 ## Crates
 
 - `corelox-build`: the build-time part: header generation (`Builder`) and

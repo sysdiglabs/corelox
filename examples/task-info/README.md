@@ -24,7 +24,9 @@ accessors, so it works across kernel versions without recompiling.
 cargo build --release
 ```
 
-The program is `target/bpfel-unknown-none/release/task-info`.
+The program is `target/bpfel-unknown-none/release/task-info`. You can ignore
+the "unable to open LLVM shared lib ... file too short" warning from
+bpf-linker (see the [top-level README](../../README.md#requirements)).
 
 ## Checking the relocations (no root needed)
 
