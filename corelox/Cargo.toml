@@ -2,10 +2,13 @@
 name = "corelox"
 version = "0.1.0"
 edition = "2024"
+description = "CO-RE relocations: proc macro"
+license = "MIT"
+repository = "https://github.com/sysdiglabs/corelox"
 
 [lib]
 proc-macro = true
 
 [dependencies]
-corelox-parser = { path = "../corelox-parser" }
+corelox-parser = { version = "0.1.0", path = "../corelox-parser" }
 zyn = "0.5.4"
