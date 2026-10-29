@@ -2,11 +2,14 @@
 name = "corelox-build"
 version = "0.1.0"
 edition = "2024"
+description = "CO-RE relocations: build.rs hooks"
+license = "MIT"
+repository = "https://github.com/sysdiglabs/corelox"
 
 [dependencies]
 askama = "0.16.1"
 bindgen = { version = "0.73.2", features = ["experimental"] }
 btf-rs = "2"
-corelox-parser = { path = "corelox-parser" }
+corelox-parser = { version = "0.1.0", path = "corelox-parser" }
 glob = "0.3"
 proc-macro2 = { version = "1", features = ["span-locations"] }

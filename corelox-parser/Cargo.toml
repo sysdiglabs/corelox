@@ -2,6 +2,9 @@
 name = "corelox-parser"
 version = "0.1.0"
 edition = "2024"
+description = "CO-RE relocations: struct parser"
+license = "MIT"
+repository = "https://github.com/sysdiglabs/corelox"
 
 [dependencies]
 zyn = "0.5.4"
