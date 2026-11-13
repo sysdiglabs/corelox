@@ -433,8 +433,7 @@ struct task_struct {
         // generated nested structs do not get accessors
         assert!(!header.contains("co_re_task_struct__se"));
 
-        // signedness is checked on the C member, and on the elements of arrays,
-        // but not for `char`
+        // signedness is checked on the C member, but not for `char` or arrays
         assert!(header.contains(
             "->se.avg.load_avg, BPF_FIELD_SIGNED) != false) corelox_signedness_mismatch(); /* task_struct::load */"
         ));
@@ -457,7 +456,6 @@ struct task_struct {
             checks,
             [
                 "a, BPF_FIELD_BYTE_SIZE) != sizeof(*out)) corelox_size_mismatch(); /* s::a */",
-                "a[0][0], BPF_FIELD_SIGNED) != false) corelox_signedness_mismatch(); /* s::a */",
                 "b, BPF_FIELD_BYTE_SIZE) != sizeof(*out)) corelox_size_mismatch(); /* s::b */",
                 "c, BPF_FIELD_BYTE_SIZE) != sizeof(*out)) corelox_size_mismatch(); /* s::c */",
                 "d, BPF_FIELD_BYTE_SIZE) != sizeof(*out)) corelox_size_mismatch(); /* s::d */",

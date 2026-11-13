@@ -147,7 +147,10 @@ two times:
 corelox does not check signedness for single bytes. In BTF, the kernel's
 `char` is `unsigned char` on some kernels and `signed char` on others.
 Without this exception, a field such as `comm: [u8; 16]` fails on some
-kernels. corelox does not support bitfields.
+kernels. At load time, corelox also does not check the signedness of array
+elements, because libbpf and aya reject `BPF_FIELD_SIGNED` on an array
+element. The load-time size check and the build-time check still apply to
+arrays. corelox does not support bitfields.
 
 ## Requirements
 

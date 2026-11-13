@@ -51,14 +51,9 @@ struct Accessor {
     /// The C member, for example `se.vruntime`
     member: String,
     ty: CType,
-    signedness_check: Option<SignednessCheck>,
-}
-
-/// Checks that an integer has the same signedness in the kernel as in Rust
-struct SignednessCheck {
-    /// The integer, for example `se.vruntime` or `comm[0]`
-    member: String,
-    signed: bool,
+    /// Whether the integer must be signed, if the accessor checks its
+    /// signedness in the kernel
+    signedness_check: Option<bool>,
 }
 
 /// A struct member while grouping `#[btf(path)]` fields into nested structs
@@ -178,12 +173,7 @@ fn members(
             name: field.ident.unraw().to_string(),
             member: member.clone(),
             ty: ty.clone(),
-            signedness_check: ty
-                .signedness_check()
-                .map(|(index, signed)| SignednessCheck {
-                    member: format!("{member}{index}"),
-                    signed,
-                }),
+            signedness_check: ty.signedness_check(),
         });
         let field_member = Member::Field {
             ty,
