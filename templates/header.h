@@ -41,8 +41,8 @@ static inline long {{ accessor }}(const void *p, {{ accessor }}_t *out)
 {
 	{#- one line each, so that the verifier's error shows which field it is #}
 	if (__builtin_preserve_field_info(((typeof(struct {{ s.name }}) *)0)->{{ a.member }}, BPF_FIELD_BYTE_SIZE) != sizeof(*out)) corelox_size_mismatch(); /* {{ s.name }}::{{ a.name }} */
-	{%- if let Some(check) = a.signedness_check %}
-	if (__builtin_preserve_field_info(((typeof(struct {{ s.name }}) *)0)->{{ check.member }}, BPF_FIELD_SIGNED) != {{ check.signed }}) corelox_signedness_mismatch(); /* {{ s.name }}::{{ a.name }} */
+	{%- if let Some(signed) = a.signedness_check %}
+	if (__builtin_preserve_field_info(((typeof(struct {{ s.name }}) *)0)->{{ a.member }}, BPF_FIELD_SIGNED) != {{ signed }}) corelox_signedness_mismatch(); /* {{ s.name }}::{{ a.name }} */
 	{%- endif %}
 	return bpf_probe_read_kernel(out, sizeof(*out),
 		(const void *)__builtin_preserve_access_index(&((const struct {{ s.name }} *)p)->{{ a.member }}));

@@ -25,19 +25,16 @@ impl CType {
         matches!(self, CType::Pointer(_))
     }
 
-    /// Returns the integer to check the signedness of, relative to a member of
-    /// this type (for example, `[0]` for the elements of an array). Also
-    /// returns whether the integer must be signed. If there is nothing to
-    /// check, returns `None`.
-    pub fn signedness_check(&self) -> Option<(String, bool)> {
+    /// Returns whether the integer must be signed, if the accessor checks its
+    /// signedness at load time. Otherwise, returns `None`.
+    ///
+    /// Arrays are not checked. libbpf and aya reject `BPF_FIELD_SIGNED` on an
+    /// array element, such as `regs[0]`. The size check and the build-time
+    /// check still cover arrays.
+    pub fn signedness_check(&self) -> Option<bool> {
         match self {
-            CType::Primitive(p) if checks_signedness(p) => {
-                Some((String::new(), p.signedness == Signedness::Signed))
-            }
-            CType::Primitive(_) | CType::Struct(_) | CType::Pointer(_) => None,
-            CType::Array(inner, _) => inner
-                .signedness_check()
-                .map(|(index, signed)| (format!("[0]{index}"), signed)),
+            CType::Primitive(p) if checks_signedness(p) => Some(p.signedness == Signedness::Signed),
+            CType::Primitive(_) | CType::Struct(_) | CType::Pointer(_) | CType::Array(..) => None,
         }
     }
 
